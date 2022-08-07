@@ -67,15 +67,6 @@ module Kemal
             pool_size: capacity,
             pool_timeout: timeout
           )
-          # @redis = ConnectionPool.new(capacity: capacity, timeout: timeout) do
-          #   Redis.new(
-              # host: host,
-              # port: port,
-              # database: database,
-              # unixsocket: unixsocket,
-              # password: password
-          #   )
-          # end
         else
           @redis = pool
         end
