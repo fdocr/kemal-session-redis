@@ -4,13 +4,10 @@ version: 0.3.0
 dependencies:
   kemal-session:
     github: kemalcr/kemal-session
-    branch: master
-  pool:
-    github: ysbaddaden/pool
-    version: 0.2.3
+    version: ~> 1.0
   redis:
     github: stefanwille/crystal-redis
-    version: ~> 1.8.0
+    version: ~> 2.8.0
 
 authors:
   - Rimas Silkaitis <neovintage@gmail.com>

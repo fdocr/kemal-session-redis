@@ -1,6 +1,9 @@
 require "./spec_helper"
+
 module Kemal
   describe "Session::RedisEngine" do
+    before_each { REDIS.flushall }
+
     describe ".new" do
       it "can be set up with no params" do
         redis = Session::RedisEngine.new
@@ -8,9 +11,14 @@ module Kemal
       end
 
       it "can be set up with a connection pool" do
-        pool = ConnectionPool.new(capacity: 1, timeout: 2.0) do
-          Redis.new
-        end
+        pool = Redis::PooledClient.new(
+            host: "localhost",
+            port: 6379,
+            database: 0,
+            password: nil,
+            pool_size: 1,
+            pool_timeout: 2.0
+          )
         redis = Session::RedisEngine.new(pool: pool)
         redis.should_not be_nil
       end
@@ -80,12 +88,15 @@ module Kemal
     end
 
     describe ".destroy" do
-      it "should remove session from redis" do
+      it "should remove session from redis", do
         session = Session.new(create_context(SESSION_ID))
-        value = REDIS.get("kemal:session:#{SESSION_ID}")
+        session_key = "kemal:session:#{session.id}"
+
+        value = REDIS.get(session_key)
         value.should_not be_nil
+
         session.destroy
-        value = REDIS.get("kemal:session:#{SESSION_ID}")
+        value = REDIS.get(session_key)
         value.should be_nil
       end
     end
@@ -93,16 +104,21 @@ module Kemal
     describe "#destroy" do
       it "should remove session from redis" do
         session = Session.new(create_context(SESSION_ID))
-        value = REDIS.get("kemal:session:#{SESSION_ID}")
+        session_key = "kemal:session:#{session.id}"
+
+        value = REDIS.get(session_key)
         value.should_not be_nil
-        Session.destroy(SESSION_ID)
-        value = REDIS.get("kemal:session:#{SESSION_ID}")
+
+        Session.destroy(session.id)
+        value = REDIS.get(session_key)
         value.should be_nil
       end
 
       it "should succeed if session doesnt exist in redis" do
         session = Session.new(create_context(SESSION_ID))
-        value = REDIS.get("kemal:session:#{SESSION_ID}")
+        session_key = "kemal:session:#{session.id}"
+
+        value = REDIS.get(session_key)
         value.should_not be_nil
         Session.destroy(SESSION_ID).should be_truthy
       end
@@ -110,7 +126,7 @@ module Kemal
 
     describe "#destroy_all" do
       it "should remove all sessions in redis" do
-        5.times { Session.new(create_context(SecureRandom.hex)) }
+        5.times { Session.new(create_context(Random::Secure.hex(12))) }
         arr = Session.all
         arr.size.should eq(5)
         Session.destroy_all
@@ -121,7 +137,7 @@ module Kemal
     describe "#get" do
       it "should return a valid Session" do
         session = Session.new(create_context(SESSION_ID))
-        get_session = Session.get(SESSION_ID)
+        get_session = Session.get(session.id)
         get_session.should_not be_nil
         if get_session
           session.id.should eq(get_session.id)
@@ -151,7 +167,7 @@ module Kemal
       end
 
       it "should return an array of Sessions" do
-        3.times { Session.new(create_context(SecureRandom.hex)) }
+        3.times { Session.new(create_context(Random::Secure.hex(12))) }
         arr = Session.all
         arr.is_a?(Array).should be_true
         arr.size.should eq(3)
@@ -160,7 +176,7 @@ module Kemal
 
     describe "#each" do
       it "should iterate over all sessions" do
-        5.times { Session.new(create_context(SecureRandom.hex)) }
+        5.times { Session.new(create_context(Random::Secure.hex(12))) }
         count = 0
         Session.each do |session|
           count = count + 1

@@ -1,12 +1,13 @@
 require "spec"
 require "io"
+require "json"
 require "../src/kemal-session-redis"
 
 Kemal::Session.config.secret = "super-awesome-secret"
 Kemal::Session.config.engine = Kemal::Session::RedisEngine.new
 
-REDIS      = Redis.new
-SESSION_ID = SecureRandom.hex
+REDIS      = Redis::PooledClient.new
+SESSION_ID = Random::Secure.hex(12)
 
 Spec.before_each do
   REDIS.flushall
@@ -16,12 +17,10 @@ def create_context(session_id : String)
   response = HTTP::Server::Response.new(IO::Memory.new)
   headers = HTTP::Headers.new
 
-  # I would rather pass nil if no cookie should be created
-  # but that throws an error
   unless session_id == ""
-    Kemal::Session.config.engine.create_session(session_id)
     cookies = HTTP::Cookies.new
-    cookies << HTTP::Cookie.new(Kemal::Session.config.cookie_name, Kemal::Session.encode(session_id))
+    encoded = Kemal::Session.encode(session_id)
+    cookies << HTTP::Cookie.new(Kemal::Session.config.cookie_name, encoded)
     cookies.add_request_headers(headers)
   end
 
@@ -30,19 +29,12 @@ def create_context(session_id : String)
 end
 
 class UserJsonSerializer
-  JSON.mapping({
-    id: Int32,
-    name: String
-  })
+  include JSON::Serializable
+
+  property id : Int32
+  property name : String
+
   include Kemal::Session::StorableObject
 
   def initialize(@id : Int32, @name : String); end
-
-  def serialize
-    self.to_json
-  end
-
-  def self.unserialize(value : String)
-    UserJsonSerializer.from_json(value)
-  end
 end
