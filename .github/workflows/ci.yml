@@ -23,9 +23,6 @@ jobs:
           - os: ubuntu-latest
             crystal: nightly
             stable: false
-          - os: macos-latest
-            crystal: nightly
-            stable: false
     continue-on-error: ${{ !matrix.stable }}
     runs-on: ${{ matrix.os }}
     name: 'crystal: ${{ matrix.crystal }}, os: ${{ matrix.os }}'
