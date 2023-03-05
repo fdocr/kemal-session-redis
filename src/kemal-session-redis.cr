@@ -45,25 +45,20 @@ module Kemal
         })
       end
 
-      @redis  : ConnectionPool(Redis)
+      @redis  : ConnectionPool(Redis::Client)
       @cache : StorageInstance
       @cached_session_id : String
 
-      def initialize(host = "localhost", port = 6379, password = nil, database = 0, capacity = 20, timeout = 2.0, unixsocket = nil, pool = nil, key_prefix = "kemal:session:")
+      def initialize(capacity = 20, timeout = 2.0, pool = nil, key_prefix = "kemal:session:")
         @redis = uninitialized ConnectionPool(Redis)
 
         if pool.nil?
+          # (host = "localhost", port = 6379, password = nil, database = 0, capacity = 20, timeout = 2.0, unixsocket = nil
           @redis = ConnectionPool.new(capacity: capacity, timeout: timeout) do
-            Redis.new(
-              host: host,
-              port: port,
-              database: database,
-              unixsocket: unixsocket,
-              password: password
-            )
+            Redis::Client.new(URI.parse("redis://localhost:6379/0"))
           end
         else
-          @redis = pool.as(ConnectionPool(Redis))
+          @redis = pool.as(ConnectionPool(Redis::Client))
         end
 
         @cache = Kemal::Session::RedisEngine::StorageInstance.new
@@ -141,16 +136,16 @@ module Kemal
       def destroy_all_sessions
         conn = @redis.checkout
 
-        cursor = 0
-        loop do
-          cursor, keys = conn.scan(cursor, "#{@key_prefix}*")
-          keys = keys.as(Array(Redis::RedisValue)).map(&.to_s)
-          keys.each do |key|
-            conn.del(key)
+        cursor = ""
+        until cursor == "0"
+          response = conn.scan(cursor, match: "#{@key_prefix}*")
+          cursor, results = response.as(Array)
+          cursor = cursor.as(String)
+          results.as(Array).each do |key|
+            conn.del(key.as(String))
           end
-          break if cursor == "0"
         end
-
+        
         @redis.checkin(conn)
       end
 
@@ -167,14 +162,14 @@ module Kemal
       def each_session
         conn = @redis.checkout
 
-        cursor = 0
-        loop do
-          cursor, keys = conn.scan(cursor, "#{@key_prefix}*")
-          keys = keys.as(Array(Redis::RedisValue)).map(&.to_s)
-          keys.each do |key|
+        cursor = ""
+        until cursor == "0"
+          response = conn.scan(cursor, match: "#{@key_prefix}*")
+          cursor, results = response.as(Array)
+          cursor = cursor.as(String)
+          results.as(Array).each do |key|
             yield Kemal::Session.new(parse_session_id(key.as(String)))
           end
-          break if cursor == "0"
         end
 
         @redis.checkin(conn)

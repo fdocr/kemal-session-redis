@@ -9,7 +9,7 @@ describe "Kemal::Session::RedisEngine" do
 
     it "can be set up with a connection pool" do
       pool = ConnectionPool.new(capacity: 1, timeout: 2.0) do
-        Redis.new
+        Redis::Client.new
       end
       redis = Kemal::Session::RedisEngine.new(pool: pool)
       redis.should_not be_nil
