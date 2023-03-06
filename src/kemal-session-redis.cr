@@ -1,7 +1,6 @@
 require "uri"
 require "json"
 require "redis"
-require "pool/connection"
 require "kemal-session"
 
 module Kemal
@@ -45,27 +44,13 @@ module Kemal
         })
       end
 
-      @redis  : ConnectionPool(Redis)
+      @redis : Redis::Client
       @cache : StorageInstance
       @cached_session_id : String
 
-      def initialize(host = "localhost", port = 6379, password = nil, database = 0, capacity = 20, timeout = 2.0, unixsocket = nil, pool = nil, key_prefix = "kemal:session:")
-        @redis = uninitialized ConnectionPool(Redis)
-
-        if pool.nil?
-          @redis = ConnectionPool.new(capacity: capacity, timeout: timeout) do
-            Redis.new(
-              host: host,
-              port: port,
-              database: database,
-              unixsocket: unixsocket,
-              password: password
-            )
-          end
-        else
-          @redis = pool.as(ConnectionPool(Redis))
-        end
-
+      def initialize(key_prefix = "kemal:session:")
+        redis_url = ENV.fetch("REDIS_URL", "redis://localhost:6379/0")
+        @redis = Redis::Client.new(URI.parse(redis_url))
         @cache = Kemal::Session::RedisEngine::StorageInstance.new
         @key_prefix = key_prefix
         @cached_session_id = ""
@@ -89,30 +74,26 @@ module Kemal
 
       def load_into_cache(session_id)
         @cached_session_id = session_id
-        conn = @redis.checkout
-        value = conn.get(prefix_session(session_id))
+        value = @redis.get(prefix_session(session_id))
         if !value.nil?
           @cache = Kemal::Session::RedisEngine::StorageInstance.from_json(value)
         else
           @cache = StorageInstance.new
-          conn.set(
+          @redis.set(
             prefix_session(session_id),
             @cache.to_json,
             ex: Kemal::Session.config.timeout.total_seconds.to_i
           )
         end
-        @redis.checkin(conn)
         return @cache
       end
 
       def save_cache
-        conn = @redis.checkout
-        conn.set(
+        @redis.set(
           prefix_session(@cached_session_id),
           @cache.to_json,
           ex: Kemal::Session.config.timeout.total_seconds.to_i
         )
-        @redis.checkin(conn)
       end
 
       def is_in_cache?(session_id)
@@ -124,34 +105,26 @@ module Kemal
       end
 
       def get_session(session_id : String) : (Kemal::Session | Nil)
-        conn = @redis.checkout
-        value = conn.get(prefix_session(session_id))
-        @redis.checkin(conn)
+        value = @redis.get(prefix_session(session_id))
 
         return Kemal::Session.new(session_id) if value
         nil
       end
 
       def destroy_session(session_id : String)
-        conn = @redis.checkout
-        conn.del(prefix_session(session_id))
-        @redis.checkin(conn)
+        @redis.del(prefix_session(session_id))
       end
 
       def destroy_all_sessions
-        conn = @redis.checkout
-
-        cursor = 0
-        loop do
-          cursor, keys = conn.scan(cursor, "#{@key_prefix}*")
-          keys = keys.as(Array(Redis::RedisValue)).map(&.to_s)
-          keys.each do |key|
-            conn.del(key)
+        cursor = ""
+        until cursor == "0"
+          response = @redis.scan(cursor, match: "#{@key_prefix}*")
+          cursor, results = response.as(Array)
+          cursor = cursor.as(String)
+          results.as(Array).each do |key|
+            @redis.del(key.as(String))
           end
-          break if cursor == "0"
         end
-
-        @redis.checkin(conn)
       end
 
       def all_sessions : Array(Kemal::Session)
@@ -165,19 +138,15 @@ module Kemal
       end
 
       def each_session
-        conn = @redis.checkout
-
-        cursor = 0
-        loop do
-          cursor, keys = conn.scan(cursor, "#{@key_prefix}*")
-          keys = keys.as(Array(Redis::RedisValue)).map(&.to_s)
-          keys.each do |key|
+        cursor = ""
+        until cursor == "0"
+          response = @redis.scan(cursor, match: "#{@key_prefix}*")
+          cursor, results = response.as(Array)
+          cursor = cursor.as(String)
+          results.as(Array).each do |key|
             yield Kemal::Session.new(parse_session_id(key.as(String)))
           end
-          break if cursor == "0"
         end
-
-        @redis.checkin(conn)
       end
 
       macro define_delegators(vars)

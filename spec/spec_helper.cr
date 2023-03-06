@@ -5,7 +5,7 @@ require "../src/kemal-session-redis"
 Kemal::Session.config.secret = "super-awesome-secret"
 Kemal::Session.config.engine = Kemal::Session::RedisEngine.new
 
-REDIS      = Redis.new
+REDIS      = Redis::Client.new
 SESSION_ID = Random::Secure.hex
 
 Spec.before_each do
