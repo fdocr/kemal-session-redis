@@ -19,6 +19,10 @@ jobs:
           - 1.5.1
           - 1.6.2
           - 1.7.2
+        include:
+          - os: ubuntu-latest
+            crystal: nightly
+            stable: false
     continue-on-error: ${{ !matrix.stable }}
     runs-on: ${{ matrix.os }}
     name: 'crystal: ${{ matrix.crystal }}, os: ${{ matrix.os }}'
@@ -41,6 +45,6 @@ jobs:
         uses: shogo82148/actions-setup-redis@v1
         id: main_redis
         with:
-          redis-version: 6.2
+          redis-version: 7.0
       - name: Run tests
         run: crystal spec
